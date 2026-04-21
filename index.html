@@ -279,7 +279,20 @@ body {
   0%, 100% { box-shadow: 0 0 0 0 rgba(255, 205, 60, 0.5); }
   50% { box-shadow: 0 0 0 4px rgba(255, 205, 60, 0); }
 }
-.row-today { background: rgba(255, 205, 60, 0.05) !important; }
+.row-today { background: rgba(255, 205, 60, 0.08) !important; }
+
+/* ⭐ 중요 표시 (알림 체크된 항목) */
+.star-mark {
+  display: inline-block;
+  margin-right: 5px;
+  font-size: 14px;
+  filter: drop-shadow(0 0 3px rgba(255, 205, 60, 0.8));
+}
+.row-notify {
+  box-shadow: inset 4px 0 0 0 #ffcd3c;
+  background: rgba(255, 205, 60, 0.04);
+}
+.row-notify:hover { background: rgba(255, 205, 60, 0.1) !important; }
 .subject-cell {
   color: var(--warning);
   font-weight: 600;
@@ -775,20 +788,24 @@ function renderBoard(board) {
       const tr = document.createElement('tr');
       tr.dataset.taskId = task.id;
 
+      // ⭐ 중요 표시 - 알림받기 체크된 모든 항목 (완료 아닐 때)
+      const isImportant = !!task.notify && task.status !== 'done';
       // "오늘까지!" 강조 - 알림받기 체크 + 오늘 마감 + 완료 아님
-      const isTodayUrgent = task.notify && task.date === todayStr && task.status !== 'done';
+      const isTodayUrgent = isImportant && task.date === todayStr;
+      if (isImportant) tr.classList.add('row-notify');
       if (isTodayUrgent) tr.classList.add('row-today');
 
       const platformBadge = task.platform ? `<span class="platform-badge platform-${task.platform}">${PLATFORM_LABEL[task.platform]}</span>` : '';
       const recurringIcon = task.recurring && task.recurring !== 'none' ? `<span class="recurring-icon" title="${RECURRING_LABEL[task.recurring]}">🔁</span>` : '';
       const todayMark = isTodayUrgent ? '<span class="today-mark">⚠ 오늘까지!</span>' : '';
+      const starMark = isImportant ? '<span class="star-mark" title="중요 표시">⭐</span>' : '';
 
       tr.innerHTML = `
         <td><span class="status-badge status-${task.status}" data-action="cycle-status" title="클릭하여 상태 변경">${STATUS_LABEL[task.status]}</span></td>
         <td class="date-cell ${getDateClass(task.date)}">${formatDate(task.date)}</td>
         <td class="subject-cell"></td>
         <td>
-          ${todayMark}
+          ${starMark}${todayMark}
           <span class="task-title ${task.status === 'done' ? 'done-task' : ''}"></span>
           <div style="display:flex; gap:4px; margin-top:2px;">${platformBadge}${recurringIcon}</div>
         </td>
