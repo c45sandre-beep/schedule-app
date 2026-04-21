@@ -1,0 +1,1137 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>셀러 일정 보드</title>
+  <style>
+/* ===== 기본 (다크 테마 - 스크린샷과 유사) ===== */
+* { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --bg: #191919;
+  --surface: #252525;
+  --surface-2: #2f2f2f;
+  --surface-hover: #333;
+  --border: #373737;
+  --text: #e8e8e8;
+  --text-muted: #9a9a9a;
+  --text-dim: #6b6b6b;
+  --primary: #5b8def;
+  --primary-dark: #4a7ad8;
+  --danger: #e06c6c;
+  --success: #3cb371;
+  --warning: #e8a44c;
+
+  /* 상태 색상 */
+  --status-done-bg: #1e3a2e;
+  --status-done-text: #64c98a;
+  --status-doing-bg: #1e3050;
+  --status-doing-text: #6ea5f0;
+  --status-todo-bg: #333;
+  --status-todo-text: #aaa;
+
+  /* 플랫폼 색상 */
+  --coupang: #ef4444;
+  --ably: #ec4899;
+  --toss: #3182f6;
+  --s2b: #10b981;
+  --common: #8b8b8b;
+}
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans KR', sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  line-height: 1.5;
+  min-height: 100vh;
+  font-size: 14px;
+}
+
+/* ===== 상단 바 ===== */
+.topbar {
+  display: flex;
+  align-items: center;
+  padding: 12px 20px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  gap: 12px;
+  flex-wrap: wrap;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+.logo { font-size: 17px; font-weight: 700; margin-right: 8px; }
+.topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+  flex-wrap: wrap;
+}
+.spacer { flex: 1; }
+.toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--text-muted);
+  cursor: pointer;
+  user-select: none;
+}
+.toggle input { cursor: pointer; }
+
+/* ===== 버튼 ===== */
+.btn {
+  padding: 7px 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface-2);
+  color: var(--text);
+  font-size: 13px;
+  cursor: pointer;
+  font-family: inherit;
+  transition: all 0.15s;
+}
+.btn:hover { background: var(--surface-hover); }
+.btn-primary { background: var(--primary); color: white; border-color: var(--primary); }
+.btn-primary:hover { background: var(--primary-dark); border-color: var(--primary-dark); }
+.btn-ghost { background: transparent; border-color: transparent; color: var(--text-muted); }
+.btn-ghost:hover { background: var(--surface-2); color: var(--text); }
+.btn-danger { background: var(--danger); color: white; border-color: var(--danger); }
+.btn-danger:hover { opacity: 0.9; }
+.btn-sm { padding: 4px 8px; font-size: 12px; }
+.btn-icon {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  border-radius: 4px;
+  font-size: 14px;
+}
+.btn-icon:hover { background: var(--surface-2); color: var(--text); }
+.w-full { width: 100%; }
+
+/* ===== 보드 그리드 ===== */
+.boards-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(500px, 1fr));
+  gap: 16px;
+  padding: 16px;
+  max-width: 100%;
+  align-items: start;
+}
+.boards-grid.cols-1 { grid-template-columns: 1fr; }
+.boards-grid.cols-2 { grid-template-columns: repeat(2, 1fr); }
+.boards-grid.cols-3 { grid-template-columns: repeat(3, 1fr); }
+.boards-grid.cols-4 { grid-template-columns: repeat(4, 1fr); }
+@media (max-width: 1100px) {
+  .boards-grid.cols-3, .boards-grid.cols-4 { grid-template-columns: repeat(2, 1fr); }
+}
+@media (max-width: 700px) {
+  .boards-grid { grid-template-columns: 1fr !important; }
+}
+
+/* ===== 보드 ===== */
+.board {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  transition: all 0.2s;
+}
+.board-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--border);
+  cursor: pointer;
+  user-select: none;
+}
+.board-header:hover { background: var(--surface-2); }
+.board-icon { font-size: 18px; }
+.board-title {
+  font-size: 16px;
+  font-weight: 700;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.board-count {
+  background: var(--surface-2);
+  color: var(--text-muted);
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 11px;
+  font-weight: 600;
+}
+.board-collapse-icon {
+  color: var(--text-muted);
+  transition: transform 0.2s;
+  font-size: 12px;
+}
+.board.collapsed .board-collapse-icon { transform: rotate(-90deg); }
+.board.collapsed .board-body { display: none; }
+
+.board-body { display: flex; flex-direction: column; }
+.board-desc {
+  padding: 8px 14px;
+  font-size: 12px;
+  color: var(--text-muted);
+  border-bottom: 1px solid var(--border);
+}
+
+.board-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  border-bottom: 1px solid var(--border);
+  flex-wrap: wrap;
+}
+.board-toolbar .toggle { font-size: 12px; }
+
+/* ===== 테이블 ===== */
+.task-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.task-table thead th {
+  text-align: left;
+  padding: 8px 10px;
+  color: var(--text-muted);
+  font-weight: 500;
+  font-size: 12px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 0;
+}
+.task-table th.col-status { width: 80px; }
+.task-table th.col-date { width: 110px; }
+.task-table th.col-platform { width: 70px; }
+.task-table th.col-action { width: 36px; }
+
+.task-table tbody tr {
+  border-bottom: 1px solid var(--border);
+  cursor: pointer;
+}
+.task-table tbody tr:hover { background: var(--surface-2); }
+.task-table tbody td {
+  padding: 8px 10px;
+  vertical-align: top;
+}
+.task-table tbody td.memo-cell {
+  color: var(--text-muted);
+  font-size: 12px;
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.task-title { font-weight: 500; }
+.task-title.done-task { color: var(--text-dim); text-decoration: line-through; }
+
+/* 상태 뱃지 */
+.status-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.status-badge::before {
+  content: '● ';
+}
+.status-done { background: var(--status-done-bg); color: var(--status-done-text); }
+.status-doing { background: var(--status-doing-bg); color: var(--status-doing-text); }
+.status-todo { background: var(--status-todo-bg); color: var(--status-todo-text); }
+
+/* 플랫폼 뱃지 */
+.platform-badge {
+  display: inline-block;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 600;
+  color: white;
+}
+.platform-coupang { background: var(--coupang); }
+.platform-ably { background: var(--ably); }
+.platform-toss { background: var(--toss); }
+.platform-s2b { background: var(--s2b); }
+.platform-common { background: var(--common); }
+
+.date-cell { color: var(--text-muted); font-size: 12px; }
+.date-cell.overdue { color: var(--danger); font-weight: 600; }
+.date-cell.today { color: var(--warning); font-weight: 600; }
+
+.recurring-icon { color: var(--warning); font-size: 11px; }
+.notify-icon { color: var(--primary); font-size: 11px; }
+
+/* 빈 상태 */
+.empty-row td {
+  text-align: center;
+  color: var(--text-dim);
+  font-size: 12px;
+  padding: 20px !important;
+}
+
+.board-footer {
+  padding: 8px 14px;
+  border-top: 1px solid var(--border);
+}
+.btn-add-task {
+  width: 100%;
+  padding: 8px;
+  background: transparent;
+  border: 1px dashed var(--border);
+  border-radius: 6px;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 13px;
+}
+.btn-add-task:hover { background: var(--surface-2); color: var(--text); border-color: var(--primary); }
+
+/* ===== 입력 ===== */
+input[type="text"], input[type="date"], input[type="time"],
+input[type="password"], select, textarea {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 13px;
+  font-family: inherit;
+  background: var(--surface-2);
+  color: var(--text);
+}
+input:focus, select:focus, textarea:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px rgba(91, 141, 239, 0.15);
+}
+label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--text-muted); font-weight: 500; }
+.help-inline { font-weight: 400; }
+
+/* ===== 모달 ===== */
+.modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+  padding: 16px;
+  backdrop-filter: blur(2px);
+}
+.modal.hidden { display: none; }
+.modal-content {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 20px;
+  width: 100%;
+  max-width: 500px;
+  max-height: 90vh;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.modal-content h3 { font-size: 17px; font-weight: 700; margin-bottom: 4px; }
+.row { display: flex; gap: 10px; }
+.flex-1 { flex: 1; }
+.flex-2 { flex: 2; }
+.checkbox-row { flex-direction: row; align-items: center; gap: 8px; cursor: pointer; color: var(--text); }
+.checkbox-row input { width: auto; }
+.modal-actions { display: flex; gap: 8px; margin-top: 8px; align-items: center; }
+
+/* ===== 설정 ===== */
+.settings-section {
+  padding: 12px 0;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.settings-section:last-child { border-bottom: none; }
+.settings-section h4 { font-size: 14px; font-weight: 600; }
+.help { font-size: 11px; color: var(--text-muted); }
+.btn-row { display: flex; gap: 6px; flex-wrap: wrap; }
+
+/* ===== 토스트 ===== */
+.toast {
+  position: fixed;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--surface-2);
+  color: white;
+  padding: 10px 20px;
+  border-radius: 8px;
+  font-size: 13px;
+  z-index: 200;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+  border: 1px solid var(--border);
+}
+.toast.hidden { display: none; }
+.toast.error { background: var(--danger); border-color: var(--danger); }
+.toast.success { background: var(--success); border-color: var(--success); }
+
+.hidden { display: none !important; }
+
+/* 스크롤바 커스텀 */
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: var(--surface); }
+::-webkit-scrollbar-thumb { background: var(--surface-hover); border-radius: 5px; }
+::-webkit-scrollbar-thumb:hover { background: #4a4a4a; }
+
+</style>
+</head>
+<body>
+  <header class="topbar">
+    <div class="logo">📋 셀러 일정 보드</div>
+    <div class="topbar-actions">
+      <button id="btn-add-board" class="btn btn-primary">＋ 새 보드</button>
+      <label class="toggle">
+        <input type="checkbox" id="global-hide-done" />
+        <span>완료 항목 전체 숨기기</span>
+      </label>
+      <div class="spacer"></div>
+      <button id="btn-sync" class="btn btn-primary" title="GitHub 동기화">☁ 동기화</button>
+      <button id="btn-settings" class="btn btn-ghost" title="설정">⚙</button>
+    </div>
+  </header>
+
+  <main id="boards-grid" class="boards-grid">
+    <!-- 보드들이 여기에 렌더링됨 -->
+  </main>
+
+  <!-- 보드 추가/수정 모달 -->
+  <div id="board-modal" class="modal hidden">
+    <div class="modal-content">
+      <h3 id="board-modal-title">새 보드</h3>
+      <div class="row">
+        <label class="flex-1">아이콘 (이모지)
+          <input type="text" id="board-icon" maxlength="2" placeholder="📋" />
+        </label>
+        <label class="flex-2">보드 이름
+          <input type="text" id="board-title" placeholder="예: 신규런칭" />
+        </label>
+      </div>
+      <label>설명 (선택)
+        <input type="text" id="board-desc" placeholder="예: 나만의 방식으로 작업을 체계적으로 관리하세요." />
+      </label>
+      <div class="modal-actions">
+        <button id="btn-delete-board" class="btn btn-danger hidden">보드 삭제</button>
+        <div class="spacer"></div>
+        <button class="btn btn-ghost" data-close-modal="board-modal">취소</button>
+        <button id="btn-save-board" class="btn btn-primary">저장</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 작업 추가/수정 모달 -->
+  <div id="task-modal" class="modal hidden">
+    <div class="modal-content">
+      <h3 id="task-modal-title">새 작업</h3>
+      <label>제목
+        <input type="text" id="task-title" placeholder="작업 이름" />
+      </label>
+      <div class="row">
+        <label class="flex-1">상태
+          <select id="task-status">
+            <option value="todo">시작 전</option>
+            <option value="doing">진행 중</option>
+            <option value="done">완료</option>
+          </select>
+        </label>
+        <label class="flex-1">마감일
+          <input type="date" id="task-date" />
+        </label>
+      </div>
+      <div class="row">
+        <label class="flex-1">플랫폼
+          <select id="task-platform">
+            <option value="">선택 안 함</option>
+            <option value="coupang">쿠팡</option>
+            <option value="ably">에이블리</option>
+            <option value="toss">토스</option>
+            <option value="s2b">S2B</option>
+            <option value="common">공통</option>
+          </select>
+        </label>
+        <label class="flex-1">반복
+          <select id="task-recurring">
+            <option value="none">없음</option>
+            <option value="daily">매일</option>
+            <option value="weekly">매주</option>
+            <option value="monthly">매월</option>
+          </select>
+        </label>
+      </div>
+      <label>메모 1
+        <textarea id="task-memo1" rows="2" placeholder="메모..."></textarea>
+      </label>
+      <label>메모 2
+        <textarea id="task-memo2" rows="2" placeholder="추가 메모..."></textarea>
+      </label>
+      <label class="checkbox-row">
+        <input type="checkbox" id="task-notify" />
+        <span>🔔 마감일 알림 받기</span>
+      </label>
+      <div class="modal-actions">
+        <button id="btn-delete-task" class="btn btn-danger hidden">삭제</button>
+        <div class="spacer"></div>
+        <button class="btn btn-ghost" data-close-modal="task-modal">취소</button>
+        <button id="btn-save-task" class="btn btn-primary">저장</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 설정 모달 -->
+  <div id="settings-modal" class="modal hidden">
+    <div class="modal-content">
+      <h3>⚙ 설정 & 동기화</h3>
+
+      <section class="settings-section">
+        <h4>🔗 GitHub Gist 동기화</h4>
+        <p class="help">집PC ↔ 사무실PC 데이터 공유용 GitHub Personal Access Token이 필요해요. (아래 가이드 참고)</p>
+        <label>GitHub Personal Access Token
+          <input type="password" id="gh-token" placeholder="ghp_xxxxxxxxxxxxxxxxxxxx" />
+        </label>
+        <label>Gist ID <span class="help-inline">(처음엔 비워두세요 - 자동 생성됨)</span>
+          <input type="text" id="gh-gist-id" placeholder="자동으로 채워집니다" />
+        </label>
+        <div class="btn-row">
+          <button id="btn-upload" class="btn btn-primary">☁ 업로드 (이 PC → Gist)</button>
+          <button id="btn-download" class="btn btn-primary">⬇ 다운로드 (Gist → 이 PC)</button>
+        </div>
+        <p id="sync-status" class="help"></p>
+      </section>
+
+      <section class="settings-section">
+        <h4>🔔 알림 권한</h4>
+        <button id="btn-permit-notify" class="btn btn-primary">알림 권한 요청</button>
+        <span id="notify-status" class="help"></span>
+      </section>
+
+      <section class="settings-section">
+        <h4>💾 데이터 백업</h4>
+        <div class="btn-row">
+          <button id="btn-export" class="btn btn-ghost">📥 JSON 내보내기</button>
+          <button id="btn-import" class="btn btn-ghost">📤 JSON 가져오기</button>
+          <input type="file" id="file-import" accept=".json" class="hidden" />
+        </div>
+        <button id="btn-clear" class="btn btn-danger">⚠ 모든 데이터 삭제</button>
+      </section>
+
+      <section class="settings-section">
+        <h4>🎨 레이아웃</h4>
+        <label>보드 배치
+          <select id="layout-cols">
+            <option value="auto">자동 (화면 크기에 맞춤)</option>
+            <option value="1">1열</option>
+            <option value="2">2열</option>
+            <option value="3">3열</option>
+            <option value="4">4열</option>
+          </select>
+        </label>
+      </section>
+
+      <div class="modal-actions">
+        <div class="spacer"></div>
+        <button class="btn btn-primary" data-close-modal="settings-modal">닫기</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 토스트 -->
+  <div id="toast" class="toast hidden"></div>
+
+  <script>
+/* ===========================================================
+   셀러 일정 보드 - 다중 보드 + 접기/펼치기 + 완료 숨기기
+   저장: localStorage + GitHub Gist 동기화
+   =========================================================== */
+
+// ---------- 상수 ----------
+const STORAGE_KEY = 'seller-boards-v2';
+const TOKEN_KEY = 'gh-token';
+const GIST_FILENAME = 'seller-boards.json';
+
+const STATUS_LABEL = { todo: '시작 전', doing: '진행 중', done: '완료' };
+const PLATFORM_LABEL = { coupang: '쿠팡', ably: '에이블리', toss: '토스', s2b: 'S2B', common: '공통' };
+const RECURRING_LABEL = { none: '없음', daily: '매일', weekly: '매주', monthly: '매월' };
+
+// ---------- 기본 보드 (처음 시작할 때) ----------
+function defaultBoards() {
+  return [
+    { id: uid(), icon: '🚀', title: '신규런칭', desc: '런칭 전 준비 작업', collapsed: false, hideCompleted: false, tasks: [] },
+    { id: uid(), icon: '✅', title: 'Action Plan', desc: '나만의 방식으로 작업을 체계적으로 관리하세요.', collapsed: false, hideCompleted: false, tasks: [] },
+    { id: uid(), icon: '🤖', title: '업무 자동화', desc: '팀의 목표를 조율하세요.', collapsed: false, hideCompleted: false, tasks: [] },
+    { id: uid(), icon: '🛒', title: '상품 소싱', desc: '프로젝트를 처음부터 끝까지 관리하고 실행합니다.', collapsed: false, hideCompleted: false, tasks: [] },
+  ];
+}
+
+// ---------- 상태 ----------
+let state = {
+  boards: [],
+  settings: { gistId: '', layoutCols: 'auto', globalHideDone: false }
+};
+
+let editingBoardId = null;   // 보드 편집 중
+let editingTaskBoardId = null; // 작업 편집 중 (어느 보드의)
+let editingTaskId = null;
+
+// ---------- 유틸 ----------
+function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 8); }
+function toDateStr(d) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${dd}`;
+}
+function formatDate(dateStr) {
+  if (!dateStr) return '';
+  const [y, m, d] = dateStr.split('-');
+  return `${y}/${m}/${d}`;
+}
+function getDateClass(dateStr) {
+  if (!dateStr) return '';
+  const today = toDateStr(new Date());
+  if (dateStr < today) return 'overdue';
+  if (dateStr === today) return 'today';
+  return '';
+}
+function showToast(msg, type = '') {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.className = 'toast ' + type;
+  setTimeout(() => el.classList.add('hidden'), 2500);
+}
+
+// ---------- 저장 ----------
+function save() {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+}
+function load() {
+  const raw = localStorage.getItem(STORAGE_KEY);
+  if (raw) {
+    try {
+      const parsed = JSON.parse(raw);
+      state = { ...state, ...parsed };
+      state.settings = { gistId: '', layoutCols: 'auto', globalHideDone: false, ...(parsed.settings || {}) };
+    } catch(e) { console.warn(e); }
+  }
+  if (!state.boards || state.boards.length === 0) {
+    state.boards = defaultBoards();
+    save();
+  }
+}
+
+// ---------- 렌더: 전체 ----------
+function renderAll() {
+  const grid = document.getElementById('boards-grid');
+  grid.className = 'boards-grid cols-' + (state.settings.layoutCols || 'auto');
+  grid.innerHTML = '';
+  state.boards.forEach(board => grid.appendChild(renderBoard(board)));
+}
+
+// ---------- 렌더: 보드 하나 ----------
+function renderBoard(board) {
+  const el = document.createElement('section');
+  el.className = 'board' + (board.collapsed ? ' collapsed' : '');
+  el.dataset.boardId = board.id;
+
+  // 완료 항목 숨기기 (보드별 or 전역)
+  const hideCompleted = board.hideCompleted || state.settings.globalHideDone;
+  const visibleTasks = board.tasks.filter(t => !hideCompleted || t.status !== 'done');
+  const doneCount = board.tasks.filter(t => t.status === 'done').length;
+
+  // 헤더
+  const header = document.createElement('div');
+  header.className = 'board-header';
+  header.innerHTML = `
+    <span class="board-collapse-icon">▼</span>
+    <span class="board-icon"></span>
+    <span class="board-title"></span>
+    <span class="board-count">${visibleTasks.length}</span>
+    <button class="btn-icon" data-action="edit-board" title="보드 편집">⋯</button>
+  `;
+  header.querySelector('.board-icon').textContent = board.icon || '📋';
+  header.querySelector('.board-title').textContent = board.title;
+  el.appendChild(header);
+
+  // 바디
+  const body = document.createElement('div');
+  body.className = 'board-body';
+
+  if (board.desc) {
+    const desc = document.createElement('div');
+    desc.className = 'board-desc';
+    desc.textContent = board.desc;
+    body.appendChild(desc);
+  }
+
+  // 툴바 (완료 숨기기 체크박스)
+  const toolbar = document.createElement('div');
+  toolbar.className = 'board-toolbar';
+  toolbar.innerHTML = `
+    <label class="toggle">
+      <input type="checkbox" ${board.hideCompleted ? 'checked' : ''} data-action="toggle-hide-done">
+      <span>완료 숨기기 ${doneCount > 0 ? `(${doneCount}개)` : ''}</span>
+    </label>
+  `;
+  body.appendChild(toolbar);
+
+  // 테이블
+  const table = document.createElement('table');
+  table.className = 'task-table';
+  table.innerHTML = `
+    <thead>
+      <tr>
+        <th class="col-status">상태</th>
+        <th class="col-date">마감일</th>
+        <th>제목</th>
+        <th>메모</th>
+        <th class="col-action"></th>
+      </tr>
+    </thead>
+    <tbody></tbody>
+  `;
+  const tbody = table.querySelector('tbody');
+
+  if (visibleTasks.length === 0) {
+    const tr = document.createElement('tr');
+    tr.className = 'empty-row';
+    tr.innerHTML = `<td colspan="5">${board.tasks.length > 0 && hideCompleted ? '완료 항목만 있음 (숨김)' : '작업이 없습니다. 아래 + 버튼으로 추가하세요'}</td>`;
+    tbody.appendChild(tr);
+  } else {
+    // 정렬: 마감일 오름차순 (없는 건 뒤로), 같은 날짜면 상태 순서 (todo → doing → done)
+    const statusOrder = { todo: 0, doing: 1, done: 2 };
+    visibleTasks.sort((a, b) => {
+      if (!a.date && !b.date) return 0;
+      if (!a.date) return 1;
+      if (!b.date) return -1;
+      if (a.date !== b.date) return a.date.localeCompare(b.date);
+      return statusOrder[a.status] - statusOrder[b.status];
+    });
+
+    visibleTasks.forEach(task => {
+      const tr = document.createElement('tr');
+      tr.dataset.taskId = task.id;
+
+      const memo = [task.memo1, task.memo2].filter(Boolean).join(' | ');
+      const platformBadge = task.platform ? `<span class="platform-badge platform-${task.platform}">${PLATFORM_LABEL[task.platform]}</span>` : '';
+      const recurringIcon = task.recurring && task.recurring !== 'none' ? `<span class="recurring-icon" title="${RECURRING_LABEL[task.recurring]}">🔁</span>` : '';
+      const notifyIcon = task.notify ? '<span class="notify-icon" title="알림">🔔</span>' : '';
+
+      tr.innerHTML = `
+        <td><span class="status-badge status-${task.status}">${STATUS_LABEL[task.status]}</span></td>
+        <td class="date-cell ${getDateClass(task.date)}">${formatDate(task.date)}</td>
+        <td>
+          <div class="task-title ${task.status === 'done' ? 'done-task' : ''}"></div>
+          <div style="display:flex; gap:4px; margin-top:2px;">${platformBadge}${recurringIcon}${notifyIcon}</div>
+        </td>
+        <td class="memo-cell"></td>
+        <td><button class="btn-icon" data-action="edit-task">✎</button></td>
+      `;
+      tr.querySelector('.task-title').textContent = task.title;
+      tr.querySelector('.memo-cell').textContent = memo;
+      tr.querySelector('.memo-cell').title = memo;
+      tbody.appendChild(tr);
+    });
+  }
+
+  body.appendChild(table);
+
+  // 푸터: 작업 추가
+  const footer = document.createElement('div');
+  footer.className = 'board-footer';
+  footer.innerHTML = `<button class="btn-add-task" data-action="add-task">＋ 작업 추가</button>`;
+  body.appendChild(footer);
+
+  el.appendChild(body);
+
+  // 이벤트 바인딩
+  bindBoardEvents(el, board);
+  return el;
+}
+
+// ---------- 보드 이벤트 ----------
+function bindBoardEvents(el, board) {
+  // 헤더 클릭 → 접기/펼치기 (버튼 제외)
+  const header = el.querySelector('.board-header');
+  header.addEventListener('click', (e) => {
+    if (e.target.closest('[data-action="edit-board"]')) return;
+    board.collapsed = !board.collapsed;
+    save();
+    el.classList.toggle('collapsed');
+  });
+  // 보드 편집
+  el.querySelector('[data-action="edit-board"]').addEventListener('click', (e) => {
+    e.stopPropagation();
+    openBoardModal(board);
+  });
+  // 완료 숨기기 체크박스
+  const toggle = el.querySelector('[data-action="toggle-hide-done"]');
+  if (toggle) {
+    toggle.addEventListener('change', (e) => {
+      board.hideCompleted = e.target.checked;
+      save();
+      renderAll();
+    });
+  }
+  // 작업 추가
+  el.querySelector('[data-action="add-task"]').addEventListener('click', () => {
+    openTaskModal(board.id, null);
+  });
+  // 작업 행 클릭 → 편집
+  el.querySelectorAll('tbody tr[data-task-id]').forEach(tr => {
+    tr.addEventListener('click', () => {
+      const task = board.tasks.find(t => t.id === tr.dataset.taskId);
+      if (task) openTaskModal(board.id, task);
+    });
+  });
+}
+
+// ---------- 보드 모달 ----------
+function openBoardModal(board = null) {
+  editingBoardId = board ? board.id : null;
+  document.getElementById('board-modal-title').textContent = board ? '보드 편집' : '새 보드';
+  document.getElementById('board-icon').value = board ? (board.icon || '') : '📋';
+  document.getElementById('board-title').value = board ? board.title : '';
+  document.getElementById('board-desc').value = board ? (board.desc || '') : '';
+  document.getElementById('btn-delete-board').classList.toggle('hidden', !board);
+  document.getElementById('board-modal').classList.remove('hidden');
+  document.getElementById('board-title').focus();
+}
+function saveBoard() {
+  const title = document.getElementById('board-title').value.trim();
+  if (!title) { showToast('이름을 입력하세요', 'error'); return; }
+  const data = {
+    icon: document.getElementById('board-icon').value.trim() || '📋',
+    title,
+    desc: document.getElementById('board-desc').value.trim(),
+  };
+  if (editingBoardId) {
+    const b = state.boards.find(b => b.id === editingBoardId);
+    Object.assign(b, data);
+  } else {
+    state.boards.push({ id: uid(), collapsed: false, hideCompleted: false, tasks: [], ...data });
+  }
+  save();
+  closeModal('board-modal');
+  renderAll();
+  showToast('저장되었습니다', 'success');
+}
+function deleteBoard() {
+  if (!editingBoardId) return;
+  if (!confirm('이 보드와 안의 모든 작업이 삭제됩니다. 계속할까요?')) return;
+  state.boards = state.boards.filter(b => b.id !== editingBoardId);
+  save();
+  closeModal('board-modal');
+  renderAll();
+  showToast('보드가 삭제되었습니다');
+}
+
+// ---------- 작업 모달 ----------
+function openTaskModal(boardId, task = null) {
+  editingTaskBoardId = boardId;
+  editingTaskId = task ? task.id : null;
+  document.getElementById('task-modal-title').textContent = task ? '작업 편집' : '새 작업';
+  document.getElementById('task-title').value = task ? task.title : '';
+  document.getElementById('task-status').value = task ? task.status : 'todo';
+  document.getElementById('task-date').value = task ? (task.date || '') : '';
+  document.getElementById('task-platform').value = task ? (task.platform || '') : '';
+  document.getElementById('task-recurring').value = task ? (task.recurring || 'none') : 'none';
+  document.getElementById('task-memo1').value = task ? (task.memo1 || '') : '';
+  document.getElementById('task-memo2').value = task ? (task.memo2 || '') : '';
+  document.getElementById('task-notify').checked = task ? !!task.notify : false;
+  document.getElementById('btn-delete-task').classList.toggle('hidden', !task);
+  document.getElementById('task-modal').classList.remove('hidden');
+  document.getElementById('task-title').focus();
+}
+function saveTask() {
+  const title = document.getElementById('task-title').value.trim();
+  if (!title) { showToast('제목을 입력하세요', 'error'); return; }
+  const data = {
+    title,
+    status: document.getElementById('task-status').value,
+    date: document.getElementById('task-date').value,
+    platform: document.getElementById('task-platform').value,
+    recurring: document.getElementById('task-recurring').value,
+    memo1: document.getElementById('task-memo1').value,
+    memo2: document.getElementById('task-memo2').value,
+    notify: document.getElementById('task-notify').checked,
+  };
+  const board = state.boards.find(b => b.id === editingTaskBoardId);
+  if (!board) return;
+  if (editingTaskId) {
+    const t = board.tasks.find(t => t.id === editingTaskId);
+    Object.assign(t, data);
+  } else {
+    board.tasks.push({ id: uid(), createdAt: Date.now(), ...data });
+  }
+  save();
+  closeModal('task-modal');
+  renderAll();
+  showToast('저장되었습니다', 'success');
+}
+function deleteTask() {
+  if (!editingTaskBoardId || !editingTaskId) return;
+  if (!confirm('이 작업을 삭제할까요?')) return;
+  const board = state.boards.find(b => b.id === editingTaskBoardId);
+  board.tasks = board.tasks.filter(t => t.id !== editingTaskId);
+  save();
+  closeModal('task-modal');
+  renderAll();
+  showToast('삭제되었습니다');
+}
+
+function closeModal(id) {
+  document.getElementById(id).classList.add('hidden');
+}
+
+// ---------- 알림 ----------
+function scheduleNotifications() {
+  if (!('Notification' in window) || Notification.permission !== 'granted') return;
+  setInterval(() => {
+    const todayStr = toDateStr(new Date());
+    state.boards.forEach(board => {
+      board.tasks.forEach(task => {
+        if (!task.notify || task.status === 'done' || !task.date) return;
+        if (task.date !== todayStr) return;
+        const notifKey = `notified-${task.id}-${todayStr}`;
+        if (sessionStorage.getItem(notifKey)) return;
+        new Notification('📅 오늘 마감', {
+          body: `[${board.title}] ${task.title}`,
+          tag: task.id
+        });
+        sessionStorage.setItem(notifKey, '1');
+      });
+    });
+  }, 60000); // 1분마다 체크
+}
+async function requestNotificationPermission() {
+  if (!('Notification' in window)) {
+    showToast('이 브라우저는 알림을 지원하지 않습니다', 'error');
+    return;
+  }
+  const perm = await Notification.requestPermission();
+  updateNotifyStatus();
+  if (perm === 'granted') {
+    showToast('알림 권한이 허용되었습니다', 'success');
+    scheduleNotifications();
+  } else {
+    showToast('알림 권한이 거부되었습니다', 'error');
+  }
+}
+function updateNotifyStatus() {
+  const el = document.getElementById('notify-status');
+  if (!('Notification' in window)) { el.textContent = '미지원'; return; }
+  const labels = { granted: '✅ 허용됨', denied: '❌ 차단됨', default: '❓ 권한 요청 전' };
+  el.textContent = labels[Notification.permission] || '';
+}
+
+// ---------- GitHub Gist 동기화 ----------
+function getToken() { return localStorage.getItem(TOKEN_KEY) || ''; }
+function setToken(t) {
+  if (t) localStorage.setItem(TOKEN_KEY, t);
+  else localStorage.removeItem(TOKEN_KEY);
+}
+
+async function uploadToGist() {
+  const token = document.getElementById('gh-token').value.trim();
+  if (!token) { showToast('GitHub Token을 입력하세요', 'error'); return; }
+  setToken(token);
+  const gistId = document.getElementById('gh-gist-id').value.trim();
+  const statusEl = document.getElementById('sync-status');
+  statusEl.textContent = '⏳ 업로드 중...';
+
+  const body = {
+    description: '셀러 일정 보드 데이터',
+    public: false,
+    files: { [GIST_FILENAME]: { content: JSON.stringify(state, null, 2) } }
+  };
+
+  try {
+    const url = gistId ? `https://api.github.com/gists/${gistId}` : 'https://api.github.com/gists';
+    const method = gistId ? 'PATCH' : 'POST';
+    const res = await fetch(url, {
+      method,
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Accept': 'application/vnd.github+json',
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(body)
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const json = await res.json();
+    state.settings.gistId = json.id;
+    document.getElementById('gh-gist-id').value = json.id;
+    save();
+    statusEl.textContent = `✅ 업로드 성공 (${new Date().toLocaleString()})`;
+    showToast('Gist에 업로드되었습니다', 'success');
+  } catch (err) {
+    console.error(err);
+    statusEl.textContent = '❌ 실패: ' + err.message;
+    showToast('업로드 실패: ' + err.message, 'error');
+  }
+}
+
+async function downloadFromGist() {
+  const token = document.getElementById('gh-token').value.trim();
+  const gistId = document.getElementById('gh-gist-id').value.trim();
+  if (!token || !gistId) { showToast('Token과 Gist ID를 입력하세요', 'error'); return; }
+  setToken(token);
+  const statusEl = document.getElementById('sync-status');
+  statusEl.textContent = '⏳ 다운로드 중...';
+  try {
+    const res = await fetch(`https://api.github.com/gists/${gistId}`, {
+      headers: { 'Authorization': `Bearer ${token}`, 'Accept': 'application/vnd.github+json' }
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const json = await res.json();
+    const file = json.files[GIST_FILENAME];
+    if (!file) throw new Error('데이터 파일 없음');
+    const imported = JSON.parse(file.content);
+    if (!confirm('현재 PC의 데이터가 덮어쓰기됩니다. 계속할까요?')) { statusEl.textContent = '취소됨'; return; }
+    state = { boards: [], settings: { gistId }, ...imported };
+    state.settings.gistId = gistId;
+    save();
+    renderAll();
+    statusEl.textContent = `✅ 다운로드 성공 (${new Date().toLocaleString()})`;
+    showToast('Gist에서 불러왔습니다', 'success');
+  } catch (err) {
+    console.error(err);
+    statusEl.textContent = '❌ 실패: ' + err.message;
+    showToast('다운로드 실패: ' + err.message, 'error');
+  }
+}
+
+// ---------- JSON 백업 ----------
+function exportJSON() {
+  const blob = new Blob([JSON.stringify(state, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `seller-boards-${toDateStr(new Date())}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+function importJSON(file) {
+  const reader = new FileReader();
+  reader.onload = () => {
+    try {
+      const imported = JSON.parse(reader.result);
+      if (!confirm('현재 데이터를 덮어쓸까요?')) return;
+      state = { boards: [], settings: {}, ...imported };
+      save();
+      renderAll();
+      showToast('가져오기 완료', 'success');
+    } catch (e) {
+      showToast('파일 형식 오류', 'error');
+    }
+  };
+  reader.readAsText(file);
+}
+
+// ---------- 초기화 ----------
+function init() {
+  load();
+
+  // 설정 UI 초기화
+  document.getElementById('gh-token').value = getToken();
+  document.getElementById('gh-gist-id').value = state.settings.gistId || '';
+  document.getElementById('layout-cols').value = state.settings.layoutCols || 'auto';
+  document.getElementById('global-hide-done').checked = !!state.settings.globalHideDone;
+
+  // 상단 바
+  document.getElementById('btn-add-board').addEventListener('click', () => openBoardModal(null));
+  document.getElementById('btn-sync').addEventListener('click', () => {
+    document.getElementById('settings-modal').classList.remove('hidden');
+    updateNotifyStatus();
+  });
+  document.getElementById('btn-settings').addEventListener('click', () => {
+    document.getElementById('settings-modal').classList.remove('hidden');
+    updateNotifyStatus();
+  });
+  document.getElementById('global-hide-done').addEventListener('change', (e) => {
+    state.settings.globalHideDone = e.target.checked;
+    save();
+    renderAll();
+  });
+
+  // 보드 모달
+  document.getElementById('btn-save-board').addEventListener('click', saveBoard);
+  document.getElementById('btn-delete-board').addEventListener('click', deleteBoard);
+  // 작업 모달
+  document.getElementById('btn-save-task').addEventListener('click', saveTask);
+  document.getElementById('btn-delete-task').addEventListener('click', deleteTask);
+
+  // 모달 닫기 버튼들
+  document.querySelectorAll('[data-close-modal]').forEach(b => {
+    b.addEventListener('click', () => closeModal(b.dataset.closeModal));
+  });
+  // 모달 배경 클릭
+  ['board-modal', 'task-modal', 'settings-modal'].forEach(id => {
+    document.getElementById(id).addEventListener('click', (e) => {
+      if (e.target.id === id) closeModal(id);
+    });
+  });
+
+  // 설정 모달 내
+  document.getElementById('btn-upload').addEventListener('click', uploadToGist);
+  document.getElementById('btn-download').addEventListener('click', downloadFromGist);
+  document.getElementById('btn-permit-notify').addEventListener('click', requestNotificationPermission);
+  document.getElementById('btn-export').addEventListener('click', exportJSON);
+  document.getElementById('btn-import').addEventListener('click', () => document.getElementById('file-import').click());
+  document.getElementById('file-import').addEventListener('change', (e) => {
+    if (e.target.files[0]) importJSON(e.target.files[0]);
+  });
+  document.getElementById('btn-clear').addEventListener('click', () => {
+    if (confirm('⚠ 모든 보드와 작업이 삭제됩니다. 정말 삭제할까요?')) {
+      state = { boards: defaultBoards(), settings: state.settings };
+      save();
+      renderAll();
+      showToast('모든 데이터가 삭제되었습니다');
+    }
+  });
+  document.getElementById('layout-cols').addEventListener('change', (e) => {
+    state.settings.layoutCols = e.target.value;
+    save();
+    renderAll();
+  });
+
+  // ESC로 모달 닫기
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      ['board-modal', 'task-modal', 'settings-modal'].forEach(closeModal);
+    }
+  });
+
+  updateNotifyStatus();
+  renderAll();
+  scheduleNotifications();
+}
+
+document.addEventListener('DOMContentLoaded', init);
+
+</script>
+</body>
+</html>
