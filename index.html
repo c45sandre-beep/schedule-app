@@ -241,7 +241,7 @@ body {
 .task-title { font-weight: 500; }
 .task-title.done-task { color: var(--text-dim); text-decoration: line-through; }
 
-/* 상태 뱃지 */
+/* 상태 뱃지 - 클릭하면 다음 상태로 순환 */
 .status-badge {
   display: inline-block;
   padding: 2px 8px;
@@ -249,13 +249,46 @@ body {
   font-size: 11px;
   font-weight: 600;
   white-space: nowrap;
+  cursor: pointer;
+  user-select: none;
+  transition: transform 0.1s;
 }
+.status-badge:hover { transform: scale(1.05); filter: brightness(1.2); }
+.status-badge:active { transform: scale(0.95); }
 .status-badge::before {
   content: '● ';
 }
 .status-done { background: var(--status-done-bg); color: var(--status-done-text); }
 .status-doing { background: var(--status-doing-bg); color: var(--status-doing-text); }
 .status-todo { background: var(--status-todo-bg); color: var(--status-todo-text); }
+
+/* 오늘까지! 노란 강조 */
+.today-mark {
+  display: inline-block;
+  background: #3d3015;
+  color: #ffcd3c;
+  font-weight: 700;
+  font-size: 11px;
+  padding: 2px 7px;
+  border-radius: 4px;
+  border: 1px solid #d4a017;
+  margin-right: 4px;
+  animation: today-blink 1.5s ease-in-out infinite;
+}
+@keyframes today-blink {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(255, 205, 60, 0.5); }
+  50% { box-shadow: 0 0 0 4px rgba(255, 205, 60, 0); }
+}
+.row-today { background: rgba(255, 205, 60, 0.05) !important; }
+.subject-cell {
+  color: var(--warning);
+  font-weight: 600;
+  font-size: 12px;
+  max-width: 100px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 
 /* 플랫폼 뱃지 */
 .platform-badge {
@@ -447,9 +480,14 @@ label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color:
   <div id="task-modal" class="modal hidden">
     <div class="modal-content">
       <h3 id="task-modal-title">새 작업</h3>
-      <label>제목
-        <input type="text" id="task-title" placeholder="작업 이름" />
-      </label>
+      <div class="row">
+        <label class="flex-1">주제 (SUBJECT)
+          <input type="text" id="task-subject" placeholder="예: 양말, 법인사업자, 배송" />
+        </label>
+        <label class="flex-2">제목
+          <input type="text" id="task-title" placeholder="작업 이름" />
+        </label>
+      </div>
       <div class="row">
         <label class="flex-1">상태
           <select id="task-status">
@@ -490,7 +528,7 @@ label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color:
       </label>
       <label class="checkbox-row">
         <input type="checkbox" id="task-notify" />
-        <span>🔔 마감일 알림 받기</span>
+        <span>⚠️ 오늘까지! 강조 + 알림 받기</span>
       </label>
       <div class="modal-actions">
         <button id="btn-delete-task" class="btn btn-danger hidden">삭제</button>
@@ -705,8 +743,10 @@ function renderBoard(board) {
       <tr>
         <th class="col-status">상태</th>
         <th class="col-date">마감일</th>
+        <th class="col-subject">주제</th>
         <th>제목</th>
-        <th>메모</th>
+        <th>메모1</th>
+        <th>메모2</th>
         <th class="col-action"></th>
       </tr>
     </thead>
@@ -717,7 +757,7 @@ function renderBoard(board) {
   if (visibleTasks.length === 0) {
     const tr = document.createElement('tr');
     tr.className = 'empty-row';
-    tr.innerHTML = `<td colspan="5">${board.tasks.length > 0 && hideCompleted ? '완료 항목만 있음 (숨김)' : '작업이 없습니다. 아래 + 버튼으로 추가하세요'}</td>`;
+    tr.innerHTML = `<td colspan="7">${board.tasks.length > 0 && hideCompleted ? '완료 항목만 있음 (숨김)' : '작업이 없습니다. 아래 + 버튼으로 추가하세요'}</td>`;
     tbody.appendChild(tr);
   } else {
     // 정렬: 마감일 오름차순 (없는 건 뒤로), 같은 날짜면 상태 순서 (todo → doing → done)
@@ -730,28 +770,39 @@ function renderBoard(board) {
       return statusOrder[a.status] - statusOrder[b.status];
     });
 
+    const todayStr = toDateStr(new Date());
     visibleTasks.forEach(task => {
       const tr = document.createElement('tr');
       tr.dataset.taskId = task.id;
 
-      const memo = [task.memo1, task.memo2].filter(Boolean).join(' | ');
+      // "오늘까지!" 강조 - 알림받기 체크 + 오늘 마감 + 완료 아님
+      const isTodayUrgent = task.notify && task.date === todayStr && task.status !== 'done';
+      if (isTodayUrgent) tr.classList.add('row-today');
+
       const platformBadge = task.platform ? `<span class="platform-badge platform-${task.platform}">${PLATFORM_LABEL[task.platform]}</span>` : '';
       const recurringIcon = task.recurring && task.recurring !== 'none' ? `<span class="recurring-icon" title="${RECURRING_LABEL[task.recurring]}">🔁</span>` : '';
-      const notifyIcon = task.notify ? '<span class="notify-icon" title="알림">🔔</span>' : '';
+      const todayMark = isTodayUrgent ? '<span class="today-mark">⚠ 오늘까지!</span>' : '';
 
       tr.innerHTML = `
-        <td><span class="status-badge status-${task.status}">${STATUS_LABEL[task.status]}</span></td>
+        <td><span class="status-badge status-${task.status}" data-action="cycle-status" title="클릭하여 상태 변경">${STATUS_LABEL[task.status]}</span></td>
         <td class="date-cell ${getDateClass(task.date)}">${formatDate(task.date)}</td>
+        <td class="subject-cell"></td>
         <td>
-          <div class="task-title ${task.status === 'done' ? 'done-task' : ''}"></div>
-          <div style="display:flex; gap:4px; margin-top:2px;">${platformBadge}${recurringIcon}${notifyIcon}</div>
+          ${todayMark}
+          <span class="task-title ${task.status === 'done' ? 'done-task' : ''}"></span>
+          <div style="display:flex; gap:4px; margin-top:2px;">${platformBadge}${recurringIcon}</div>
         </td>
-        <td class="memo-cell"></td>
+        <td class="memo-cell memo1-cell"></td>
+        <td class="memo-cell memo2-cell"></td>
         <td><button class="btn-icon" data-action="edit-task">✎</button></td>
       `;
+      tr.querySelector('.subject-cell').textContent = task.subject || '';
+      tr.querySelector('.subject-cell').title = task.subject || '';
       tr.querySelector('.task-title').textContent = task.title;
-      tr.querySelector('.memo-cell').textContent = memo;
-      tr.querySelector('.memo-cell').title = memo;
+      tr.querySelector('.memo1-cell').textContent = task.memo1 || '';
+      tr.querySelector('.memo1-cell').title = task.memo1 || '';
+      tr.querySelector('.memo2-cell').textContent = task.memo2 || '';
+      tr.querySelector('.memo2-cell').title = task.memo2 || '';
       tbody.appendChild(tr);
     });
   }
@@ -799,9 +850,23 @@ function bindBoardEvents(el, board) {
   el.querySelector('[data-action="add-task"]').addEventListener('click', () => {
     openTaskModal(board.id, null);
   });
-  // 작업 행 클릭 → 편집
+  // 작업 행 클릭 → 편집 / 상태 뱃지 클릭 → 순환
   el.querySelectorAll('tbody tr[data-task-id]').forEach(tr => {
-    tr.addEventListener('click', () => {
+    tr.addEventListener('click', (e) => {
+      // 상태 뱃지 클릭 시 순환 (편집 모달 안 뜸)
+      const statusBtn = e.target.closest('[data-action="cycle-status"]');
+      if (statusBtn) {
+        e.stopPropagation();
+        const task = board.tasks.find(t => t.id === tr.dataset.taskId);
+        if (task) {
+          // todo → doing → done → todo 순환
+          const cycle = { todo: 'doing', doing: 'done', done: 'todo' };
+          task.status = cycle[task.status] || 'todo';
+          save();
+          renderAll();
+        }
+        return;
+      }
       const task = board.tasks.find(t => t.id === tr.dataset.taskId);
       if (task) openTaskModal(board.id, task);
     });
@@ -854,6 +919,7 @@ function openTaskModal(boardId, task = null) {
   editingTaskId = task ? task.id : null;
   document.getElementById('task-modal-title').textContent = task ? '작업 편집' : '새 작업';
   document.getElementById('task-title').value = task ? task.title : '';
+  document.getElementById('task-subject').value = task ? (task.subject || '') : '';
   document.getElementById('task-status').value = task ? task.status : 'todo';
   document.getElementById('task-date').value = task ? (task.date || '') : '';
   document.getElementById('task-platform').value = task ? (task.platform || '') : '';
@@ -870,6 +936,7 @@ function saveTask() {
   if (!title) { showToast('제목을 입력하세요', 'error'); return; }
   const data = {
     title,
+    subject: document.getElementById('task-subject').value.trim(),
     status: document.getElementById('task-status').value,
     date: document.getElementById('task-date').value,
     platform: document.getElementById('task-platform').value,
