@@ -563,14 +563,31 @@ label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color:
         <label>GitHub Personal Access Token
           <input type="password" id="gh-token" placeholder="ghp_xxxxxxxxxxxxxxxxxxxx" />
         </label>
+        <p id="token-info" class="help" style="margin-top:4px;"></p>
         <label>Gist ID <span class="help-inline">(처음엔 비워두세요 - 자동 생성됨)</span>
           <input type="text" id="gh-gist-id" placeholder="자동으로 채워집니다" />
         </label>
-        <div class="btn-row">
+        <div class="btn-row" style="flex-wrap:wrap;">
+          <button id="btn-test-token" class="btn" style="background:#4a5568;color:#fff;">🔍 토큰 테스트</button>
+          <button id="btn-clear-token" class="btn" style="background:#6b4545;color:#fff;">🗑 토큰 지우기</button>
+        </div>
+        <div class="btn-row" style="margin-top:6px;">
           <button id="btn-upload" class="btn btn-primary">☁ 업로드 (이 PC → Gist)</button>
           <button id="btn-download" class="btn btn-primary">⬇ 다운로드 (Gist → 이 PC)</button>
         </div>
         <p id="sync-status" class="help"></p>
+        <details style="margin-top:8px; font-size:12px; color:var(--text-muted);">
+          <summary style="cursor:pointer;">❓ 401 에러 해결법</summary>
+          <div style="padding:8px 0; line-height:1.6;">
+            <strong>HTTP 401 = 토큰이 유효하지 않음</strong><br>
+            1. <strong>각 PC마다 토큰을 따로 저장해야 해요</strong> (localStorage는 PC별로 분리)<br>
+            2. 위 '토큰 테스트' 버튼으로 현재 토큰이 유효한지 확인하세요<br>
+            3. 유효하지 않으면 GitHub에서 새 토큰 발급 후 붙여넣기<br>
+            &nbsp;&nbsp;→ <a href="https://github.com/settings/tokens/new?scopes=gist&description=schedule-app" target="_blank" style="color:#4a9eff;">새 토큰 발급 (gist 권한)</a><br>
+            4. 토큰 발급 시 <strong>Expiration을 "No expiration"</strong>으로 설정<br>
+            5. 양쪽 PC 모두 <strong>같은 토큰</strong>을 사용해야 동기화 가능
+          </div>
+        </details>
       </section>
 
       <section class="settings-section">
@@ -1036,6 +1053,60 @@ function getToken() { return localStorage.getItem(TOKEN_KEY) || ''; }
 function setToken(t) {
   if (t) localStorage.setItem(TOKEN_KEY, t);
   else localStorage.removeItem(TOKEN_KEY);
+  updateTokenInfo();
+}
+function updateTokenInfo() {
+  const info = document.getElementById('token-info');
+  if (!info) return;
+  const t = getToken();
+  if (!t) {
+    info.innerHTML = '<span style="color:#ff8888;">⚠ 이 PC에 저장된 토큰 없음</span>';
+    return;
+  }
+  const prefix = t.substring(0, 4);
+  const suffix = t.substring(t.length - 4);
+  const len = t.length;
+  info.innerHTML = `<span style="color:#4ade80;">✓ 저장된 토큰: <code>${prefix}...${suffix}</code> (${len}자)</span>`;
+}
+async function testToken() {
+  const token = document.getElementById('gh-token').value.trim();
+  const statusEl = document.getElementById('sync-status');
+  if (!token) {
+    statusEl.innerHTML = '<span style="color:#ff8888;">❌ 토큰을 입력하세요</span>';
+    return;
+  }
+  statusEl.textContent = '⏳ 토큰 확인 중...';
+  try {
+    const res = await fetch('https://api.github.com/user', {
+      headers: { 'Authorization': `Bearer ${token}`, 'Accept': 'application/vnd.github+json' }
+    });
+    if (res.status === 401) {
+      statusEl.innerHTML = '<span style="color:#ff8888;">❌ 토큰이 만료/회수되었습니다. GitHub에서 새 토큰을 발급하세요.</span>';
+      return;
+    }
+    if (!res.ok) {
+      statusEl.innerHTML = `<span style="color:#ff8888;">❌ HTTP ${res.status}</span>`;
+      return;
+    }
+    const user = await res.json();
+    // gist scope 확인
+    const scopes = res.headers.get('X-OAuth-Scopes') || '';
+    const hasGist = scopes.includes('gist');
+    setToken(token);
+    if (!hasGist) {
+      statusEl.innerHTML = `<span style="color:#ffcd3c;">⚠ 토큰은 유효하지만 <strong>gist 권한이 없습니다</strong>. (현재: ${scopes || '없음'}) 새 토큰을 gist 권한으로 발급하세요.</span>`;
+    } else {
+      statusEl.innerHTML = `<span style="color:#4ade80;">✅ 토큰 유효! 사용자: <strong>${user.login}</strong> / 권한: ${scopes}</span>`;
+    }
+  } catch (err) {
+    statusEl.innerHTML = `<span style="color:#ff8888;">❌ ${err.message}</span>`;
+  }
+}
+function clearToken() {
+  if (!confirm('이 PC에 저장된 토큰을 삭제할까요?\n(Gist ID는 유지됩니다)')) return;
+  setToken('');
+  document.getElementById('gh-token').value = '';
+  document.getElementById('sync-status').innerHTML = '<span style="color:#ffcd3c;">🗑 토큰 삭제됨. 새 토큰을 입력하세요.</span>';
 }
 
 async function uploadToGist() {
@@ -1064,6 +1135,15 @@ async function uploadToGist() {
       },
       body: JSON.stringify(body)
     });
+    if (res.status === 401) {
+      statusEl.innerHTML = '<span style="color:#ff8888;">❌ 실패: HTTP 401 - 토큰이 유효하지 않습니다. <strong>\'토큰 테스트\'</strong> 버튼으로 확인하세요.</span>';
+      showToast('토큰 만료/회수됨. 새 토큰 필요', 'error');
+      return;
+    }
+    if (res.status === 404) {
+      statusEl.innerHTML = '<span style="color:#ff8888;">❌ 실패: HTTP 404 - Gist ID가 잘못되었거나 삭제됨</span>';
+      return;
+    }
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const json = await res.json();
     state.settings.gistId = json.id;
@@ -1089,6 +1169,15 @@ async function downloadFromGist() {
     const res = await fetch(`https://api.github.com/gists/${gistId}`, {
       headers: { 'Authorization': `Bearer ${token}`, 'Accept': 'application/vnd.github+json' }
     });
+    if (res.status === 401) {
+      statusEl.innerHTML = '<span style="color:#ff8888;">❌ 실패: HTTP 401 - 토큰이 유효하지 않습니다. <strong>\'토큰 테스트\'</strong> 버튼으로 확인하세요.</span>';
+      showToast('토큰 만료/회수됨. 새 토큰 필요', 'error');
+      return;
+    }
+    if (res.status === 404) {
+      statusEl.innerHTML = '<span style="color:#ff8888;">❌ 실패: HTTP 404 - Gist ID가 잘못되었거나 삭제됨</span>';
+      return;
+    }
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const json = await res.json();
     const file = json.files[GIST_FILENAME];
@@ -1150,10 +1239,12 @@ function init() {
   document.getElementById('btn-sync').addEventListener('click', () => {
     document.getElementById('settings-modal').classList.remove('hidden');
     updateNotifyStatus();
+    updateTokenInfo();
   });
   document.getElementById('btn-settings').addEventListener('click', () => {
     document.getElementById('settings-modal').classList.remove('hidden');
     updateNotifyStatus();
+    updateTokenInfo();
   });
   document.getElementById('global-hide-done').addEventListener('change', (e) => {
     state.settings.globalHideDone = e.target.checked;
@@ -1182,6 +1273,20 @@ function init() {
   // 설정 모달 내
   document.getElementById('btn-upload').addEventListener('click', uploadToGist);
   document.getElementById('btn-download').addEventListener('click', downloadFromGist);
+  document.getElementById('btn-test-token').addEventListener('click', testToken);
+  document.getElementById('btn-clear-token').addEventListener('click', clearToken);
+  // 토큰 입력 시 저장된 토큰과 다르면 안내
+  document.getElementById('gh-token').addEventListener('input', () => {
+    const cur = document.getElementById('gh-token').value.trim();
+    const saved = getToken();
+    const info = document.getElementById('token-info');
+    if (!info) return;
+    if (cur && cur !== saved) {
+      info.innerHTML = '<span style="color:#ffcd3c;">✏ 입력 중 - 저장하려면 \'토큰 테스트\' 또는 \'업로드\' 클릭</span>';
+    } else {
+      updateTokenInfo();
+    }
+  });
   document.getElementById('btn-permit-notify').addEventListener('click', requestNotificationPermission);
   document.getElementById('btn-export').addEventListener('click', exportJSON);
   document.getElementById('btn-import').addEventListener('click', () => document.getElementById('file-import').click());
