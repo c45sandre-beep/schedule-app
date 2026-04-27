@@ -68,6 +68,18 @@ body {
   flex-wrap: wrap;
 }
 .spacer { flex: 1; }
+.sync-time {
+  font-size: 12px;
+  color: var(--text-muted);
+  padding: 4px 10px;
+  background: var(--surface-2);
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  white-space: nowrap;
+}
+.sync-time.upload { color: #4ade80; border-color: #2d6a3a; }
+.sync-time.download { color: #5b8def; border-color: #2d4a7a; }
+.sync-time.empty { color: var(--text-dim); font-style: italic; }
 .toggle {
   display: flex;
   align-items: center;
@@ -456,6 +468,7 @@ label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color:
         <span>완료 항목 전체 숨기기</span>
       </label>
       <div class="spacer"></div>
+      <span id="sync-time" class="sync-time" title="마지막 동기화 시간"></span>
       <button id="btn-sync" class="btn btn-primary" title="GitHub 동기화">☁ 동기화</button>
       <button id="btn-settings" class="btn btn-ghost" title="설정">⚙</button>
     </div>
@@ -689,6 +702,45 @@ function showToast(msg, type = '') {
   el.textContent = msg;
   el.className = 'toast ' + type;
   setTimeout(() => el.classList.add('hidden'), 2500);
+}
+
+// ---------- 마지막 동기화 시간 (PC별 저장) ----------
+const SYNC_TIME_KEY = 'last-sync';
+function recordSyncTime(type) {
+  const data = { type, time: new Date().toISOString() };
+  localStorage.setItem(SYNC_TIME_KEY, JSON.stringify(data));
+  updateSyncTimeDisplay();
+}
+function updateSyncTimeDisplay() {
+  const el = document.getElementById('sync-time');
+  if (!el) return;
+  const raw = localStorage.getItem(SYNC_TIME_KEY);
+  if (!raw) {
+    el.textContent = '⏱ 동기화 기록 없음';
+    el.className = 'sync-time empty';
+    return;
+  }
+  try {
+    const { type, time } = JSON.parse(raw);
+    const d = new Date(time);
+    const now = new Date();
+    const sameDay = d.toDateString() === now.toDateString();
+    const timeStr = sameDay
+      ? `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`
+      : `${d.getMonth()+1}/${d.getDate()} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+    if (type === 'upload') {
+      el.textContent = `📤 업로드 ${timeStr}`;
+      el.className = 'sync-time upload';
+      el.title = `마지막 업로드: ${d.toLocaleString()}`;
+    } else {
+      el.textContent = `📥 다운로드 ${timeStr}`;
+      el.className = 'sync-time download';
+      el.title = `마지막 다운로드: ${d.toLocaleString()}\n⚠ 작업 후 업로드를 잊지 마세요!`;
+    }
+  } catch(e) {
+    el.textContent = '⏱ -';
+    el.className = 'sync-time empty';
+  }
 }
 
 // ---------- 저장 ----------
@@ -1149,6 +1201,7 @@ async function uploadToGist() {
     state.settings.gistId = json.id;
     document.getElementById('gh-gist-id').value = json.id;
     save();
+    recordSyncTime('upload');
     statusEl.textContent = `✅ 업로드 성공 (${new Date().toLocaleString()})`;
     showToast('Gist에 업로드되었습니다', 'success');
   } catch (err) {
@@ -1187,6 +1240,7 @@ async function downloadFromGist() {
     state = { boards: [], settings: { gistId }, ...imported };
     state.settings.gistId = gistId;
     save();
+    recordSyncTime('download');
     renderAll();
     statusEl.textContent = `✅ 다운로드 성공 (${new Date().toLocaleString()})`;
     showToast('Gist에서 불러왔습니다', 'success');
@@ -1233,6 +1287,11 @@ function init() {
   document.getElementById('gh-gist-id').value = state.settings.gistId || '';
   document.getElementById('layout-cols').value = state.settings.layoutCols || 'auto';
   document.getElementById('global-hide-done').checked = !!state.settings.globalHideDone;
+
+  // 동기화 시간 표시
+  updateSyncTimeDisplay();
+  // 1분마다 표시 갱신 (시간이 흐르면 자동 업데이트)
+  setInterval(updateSyncTimeDisplay, 60000);
 
   // 상단 바
   document.getElementById('btn-add-board').addEventListener('click', () => openBoardModal(null));
