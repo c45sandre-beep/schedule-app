@@ -1008,7 +1008,7 @@ function openTaskModal(boardId, task = null) {
   document.getElementById('task-title').value = task ? task.title : '';
   document.getElementById('task-subject').value = task ? (task.subject || '') : '';
   document.getElementById('task-status').value = task ? task.status : 'todo';
-  document.getElementById('task-date').value = task ? (task.date || '') : '';
+  document.getElementById('task-date').value = task ? (task.date || '') : toDateStr(new Date());
   document.getElementById('task-platform').value = task ? (task.platform || '') : '';
   document.getElementById('task-recurring').value = task ? (task.recurring || 'none') : 'none';
   document.getElementById('task-memo1').value = task ? (task.memo1 || '') : '';
@@ -1318,6 +1318,31 @@ function init() {
   // 작업 모달
   document.getElementById('btn-save-task').addEventListener('click', saveTask);
   document.getElementById('btn-delete-task').addEventListener('click', deleteTask);
+  // Enter 키로 저장 (textarea 제외 - 메모는 줄바꿈 필요)
+  ['task-subject', 'task-title', 'task-status', 'task-date', 'task-platform', 'task-recurring'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) {
+      el.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          saveTask();
+        }
+      });
+    }
+  });
+  // 보드 모달도 Enter로 저장
+  ['board-icon', 'board-title', 'board-desc'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) {
+      el.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          saveBoard();
+        }
+      });
+    }
+  });
+  
 
   // 모달 닫기 버튼들
   document.querySelectorAll('[data-close-modal]').forEach(b => {
