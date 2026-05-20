@@ -589,6 +589,11 @@ label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color:
           <button id="btn-upload" class="btn btn-primary">☁ 업로드 (이 PC → Gist)</button>
           <button id="btn-download" class="btn btn-primary">⬇ 다운로드 (Gist → 이 PC)</button>
         </div>
+        <label class="toggle" style="margin-top:10px; padding:8px; background:var(--surface-2); border-radius:6px;">
+                  <input type="checkbox" id="auto-sync-toggle" />
+                  <span><strong>🔄 자동 동기화 사용</strong> - 페이지 열 때 자동 다운로드 + 변경 3초 후 자동 업로드</span>
+                </label>
+        
         <p id="sync-status" class="help"></p>
         <details style="margin-top:8px; font-size:12px; color:var(--text-muted);">
           <summary style="cursor:pointer;">❓ 401 에러 해결법</summary>
@@ -712,9 +717,108 @@ function recordSyncTime(type) {
   localStorage.setItem(SYNC_TIME_KEY, JSON.stringify(data));
   updateSyncTimeDisplay();
 }
+
+const AUTO_SYNC_KEY = 'auto-sync-enabled';
+function isAutoSyncEnabled() {
+  const v = localStorage.getItem(AUTO_SYNC_KEY);
+  return v === null ? true : v === 'true';
+}
+function setAutoSync(enabled) {
+  localStorage.setItem(AUTO_SYNC_KEY, enabled ? 'true' : 'false');
+}
+
+// ---------- 자동 동기화 (디바운스) ----------
+let autoUploadTimer = null;
+let autoSyncStatus = 'idle';
+function scheduleAutoUpload() {
+  if (!isAutoSyncEnabled()) return;
+  const token = getToken();
+  const gistId = state.settings.gistId;
+  if (!token || !gistId) return;
+  autoSyncStatus = 'pending';
+  updateSyncTimeDisplay();
+  if (autoUploadTimer) clearTimeout(autoUploadTimer);
+  autoUploadTimer = setTimeout(() => silentUpload(), 3000);
+}
+async function silentUpload() {
+  const token = getToken();
+  const gistId = state.settings.gistId;
+  if (!token || !gistId) return;
+  autoSyncStatus = 'uploading';
+  updateSyncTimeDisplay();
+  const body = {
+    description: '셀러 일정 보드 데이터',
+    public: false,
+    files: { [GIST_FILENAME]: { content: JSON.stringify(state, null, 2) } }
+  };
+  try {
+    const res = await fetch(`https://api.github.com/gists/${gistId}`, {
+      method: 'PATCH',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Accept': 'application/vnd.github+json',
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(body)
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    recordSyncTime('upload');
+    autoSyncStatus = 'idle';
+  } catch (err) {
+    console.error('자동 업로드 실패:', err);
+    autoSyncStatus = 'error';
+    updateSyncTimeDisplay();
+  }
+}
+async function silentDownload() {
+  const token = getToken();
+  const gistId = state.settings.gistId;
+  if (!token || !gistId) return false;
+  try {
+    const res = await fetch(`https://api.github.com/gists/${gistId}`, {
+      headers: { 'Authorization': `Bearer ${token}`, 'Accept': 'application/vnd.github+json' }
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const json = await res.json();
+    const file = json.files[GIST_FILENAME];
+    if (!file) return false;
+    const imported = JSON.parse(file.content);
+    state = { boards: [], settings: { gistId }, ...imported };
+    state.settings.gistId = gistId;
+    save(false);
+    recordSyncTime('download');
+    return true;
+  } catch (err) {
+    console.error('자동 다운로드 실패:', err);
+    return false;
+  }
+}
+    
 function updateSyncTimeDisplay() {
   const el = document.getElementById('sync-time');
   if (!el) return;
+
+  if (autoSyncStatus === 'pending') {
+    el.textContent = '⏳ 곧 자동 저장...';
+    el.className = 'sync-time';
+    el.style.color = '#ffcd3c';
+    return;
+  }
+  if (autoSyncStatus === 'uploading') {
+    el.textContent = '☁ 자동 업로드 중...';
+    el.className = 'sync-time';
+    el.style.color = '#5b8def';
+    return;
+  }
+  if (autoSyncStatus === 'error') {
+    el.textContent = '⚠ 자동 동기화 실패';
+    el.className = 'sync-time';
+    el.style.color = '#ff8888';
+    el.title = '클릭해서 설정에서 토큰 확인';
+    return;
+  }
+  el.style.color = '';
+
   const raw = localStorage.getItem(SYNC_TIME_KEY);
   if (!raw) {
     el.textContent = '⏱ 동기화 기록 없음';
@@ -745,8 +849,9 @@ function updateSyncTimeDisplay() {
 }
 
 // ---------- 저장 ----------
-function save() {
+function save(triggerAutoSync = true) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  if (triggerAutoSync) scheduleAutoUpload();
 }
 function load() {
   const raw = localStorage.getItem(STORAGE_KEY);
@@ -1294,6 +1399,31 @@ function init() {
   // 1분마다 표시 갱신 (시간이 흐르면 자동 업데이트)
   setInterval(updateSyncTimeDisplay, 60000);
 
+  const autoToggle = document.getElementById('auto-sync-toggle');
+  if (autoToggle) autoToggle.checked = isAutoSyncEnabled();
+
+  if (isAutoSyncEnabled() && getToken() && state.settings.gistId) {
+    (async () => {
+      autoSyncStatus = 'uploading';
+      const el = document.getElementById('sync-time');
+      if (el) { el.textContent = '⬇ 최신 데이터 가져오는 중...'; el.style.color = '#5b8def'; }
+      const ok = await silentDownload();
+      autoSyncStatus = 'idle';
+      if (ok) {
+        renderAll();
+        showToast('최신 데이터를 가져왔어요', 'success');
+      }
+      updateSyncTimeDisplay();
+    })();
+  }
+
+  window.addEventListener('beforeunload', () => {
+    if (autoUploadTimer) {
+      clearTimeout(autoUploadTimer);
+      silentUpload();
+    }
+  });
+  
   // 상단 바
   document.getElementById('btn-add-board').addEventListener('click', () => openBoardModal(null));
   document.getElementById('btn-sync').addEventListener('click', () => {
@@ -1360,6 +1490,10 @@ function init() {
   document.getElementById('btn-download').addEventListener('click', downloadFromGist);
   document.getElementById('btn-test-token').addEventListener('click', testToken);
   document.getElementById('btn-clear-token').addEventListener('click', clearToken);
+  document.getElementById('auto-sync-toggle').addEventListener('change', (e) => {
+    setAutoSync(e.target.checked);
+    showToast(e.target.checked ? '자동 동기화 켜짐' : '자동 동기화 꺼짐', 'success');
+  });
   // 토큰 입력 시 저장된 토큰과 다르면 안내
   document.getElementById('gh-token').addEventListener('input', () => {
     const cur = document.getElementById('gh-token').value.trim();
