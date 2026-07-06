@@ -912,7 +912,9 @@ function renderBoard(board) {
   el.dataset.boardId = board.id;
 
   // 완료 항목 숨기기 (보드별 or 전역)
-  const hideCompleted = board.hideCompleted || state.settings.globalHideDone;
+  const hideCompleted = board.hideCompleted !== undefined
+  ? board.hideCompleted
+  : state.settings.globalHideDone;  
   const visibleTasks = board.tasks.filter(t => !hideCompleted || t.status !== 'done');
   const doneCount = board.tasks.filter(t => t.status === 'done').length;
 
